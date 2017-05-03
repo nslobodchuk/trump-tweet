@@ -1,0 +1,139 @@
+<div id='vis-container'>
+    <svg width="400" height="400" id='network-svg'></svg>
+    <div id="tweet-container"></div>
+</div>
+
+<script src="https://platform.twitter.com/widgets.js"></script>
+<script src="https://d3js.org/d3.v4.min.js"></script>
+
+
+<script>
+
+d3.select('#vis-container').style('display', 'flex').style('flex-direction', 'column');
+
+twttr.widgets.createTweet(
+  '696514666843996160',
+  document.getElementById('tweet-container'),
+  {}
+);
+
+var svg = d3.select('#network-svg'),
+    width = +svg.attr("width"),
+    height = +svg.attr("height");
+ 
+
+
+d3.json("/posts-assets/largest_network.json", function(error, graph) {
+
+  graph.nodes = graph.nodes.filter(function(d){return d.n_descendants>=1});
+
+  graph.links = graph.links.filter(function(d){ 
+
+    var source_present = false;
+    var target_present = false;
+
+    for (var i in graph.nodes) {
+      if (graph.nodes[i]['id'] == d.source){
+        source_present = true;
+      }
+      if (graph.nodes[i]['id'] == d.target){
+        target_present = true;
+      }
+      if (source_present&&target_present) break;
+    }
+    return source_present&&target_present;
+  });
+
+  var x = d3.scaleLinear()
+    .domain([d3.min(graph.nodes, function(d){ return d.n_descendants;}), d3.max(graph.nodes, function(d){return d.n_descendants;})])
+    .range([Math.PI*10, Math.PI*2500]);
+
+    
+  if (error) throw error;
+
+  /*var link = svg.append("g")
+      .attr("class", "links")
+    .selectAll("line")
+    .data(graph.links)
+    .enter().append("line").style('stroke', '#263238');*/
+
+  var node = svg.append("g")
+      .attr("class", "nodes")
+    .selectAll("circle")
+    .data(graph.nodes)
+    .enter().append("circle")
+      .attr("r", function(d){return Math.sqrt(x(d.n_descendants)/Math.PI);})
+      .style('fill', '#9C27B0')
+      .style('stroke', '#263238')
+      .style('cursor', 'pointer')
+      .call(d3.drag()
+          .on("start", dragstarted)
+          .on("drag", dragged)
+          .on("end", dragended))
+      .on('mouseover', function(){
+        d3.select(this).style('fill', '#4A148C')
+      })
+      .on('mouseout', function(){
+        d3.select(this).style('fill', '#9C27B0')
+      })
+      .on('click', function(d){
+        d3.selectAll('#tweet-container > *').remove();
+        var text = d3.select('#tweet-container').append('p').attr('id', 'loading-text').text('Loading tweet ' + d.id + '...');
+        twttr.widgets.createTweet(
+  d.id,
+  document.getElementById('tweet-container'),
+  {}
+).then(function(el){el?text.remove():(text.text('Error loading tweet ' + d.id + '.'));});
+      });
+
+  node.append("title")
+      .text(function(d) { return d.id; });
+
+  var simulation = d3.forceSimulation()
+    .force("link", d3.forceLink().id(function(d) { return d.id; }))
+    .force("charge", d3.forceManyBody().strength(function(d){return /*-x(d.n_descendants)/10*/ 1;}))
+    .force("center", d3.forceCenter(width / 2, height / 2));
+
+  simulation
+      .nodes(graph.nodes)
+      .on("tick", ticked);
+
+  simulation.force("link")
+      .links(graph.links).distance(function(d){return 5;});
+
+  simulation.force("collide", d3.forceCollide().radius(function(d) { return Math.sqrt(x(d.n_descendants)/Math.PI); }).iterations(2));
+
+  function ticked() {
+    /*link
+        .attr("x1", function(d) { return d.source.x; })
+        .attr("y1", function(d) { return d.source.y; })
+        .attr("x2", function(d) { return d.target.x; })
+        .attr("y2", function(d) { return d.target.y; });*/
+
+    node
+        .attr("cx", function(d) { return d.x; })
+        .attr("cy", function(d) { return d.y; });
+  }
+
+  function dragstarted(d) {
+  if (!d3.event.active) simulation.alphaTarget(0.3).restart();
+  d.fx = d.x;
+  d.fy = d.y;
+}
+
+function dragged(d) {
+  d.fx = d3.event.x;
+  d.fy = d3.event.y;
+}
+
+function dragended(d) {
+  if (!d3.event.active) simulation.alphaTarget(0);
+  d.fx = null;
+  d.fy = null;
+}
+
+});
+
+
+
+</script>
